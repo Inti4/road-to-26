@@ -7,6 +7,12 @@ import {
 import { groupData, matches } from './data';
 import { formatMatchDisplay, timeZoneOptions } from './shared/time';
 import type { GroupStandings, MatchFixture, NavigationSection, TimeZoneKey } from './shared/types';
+import {
+  applyLockedAdvancementStatuses,
+  groupStageIsComplete,
+  projectThirdPlaceTeams,
+  thirdPlaceTable,
+} from './shared/worldCup';
 
 const groups = 'ABCDEFGHIJKL'.split('');
 const colors: Record<string, string[]> = {
@@ -194,6 +200,31 @@ function MatchRail({ filter, setFilter, matchData, timeZone }: MatchRailProps) {
   );
 }
 
+function ThirdPlaceTracker({ standings, locked }: { standings: GroupStandings; locked: boolean }) {
+  const rows = thirdPlaceTable(standings);
+  return (
+    <div className="third-place-tracker">
+      <div><strong>{locked ? 'Locked third-place qualifiers' : 'Current third-place projection'}</strong><span>{locked ? 'Top eight are through · bottom four are out' : 'Top eight advance if groups ended now'}</span></div>
+      <div className="third-place-table" role="table" aria-label="Third-place ranking table">
+        <div className="third-place-row third-place-head" role="row"><span>#</span><span>Team</span><span>Pts</span><span>GD</span><span>GF</span><span>Status</span></div>
+        {rows.map((team, index) => {
+          const inTopEight = index < 8;
+          return (
+            <div className={`third-place-row ${inTopEight ? 'is-in' : 'is-out'}`} role="row" key={`${team.group}-${team.team}`}>
+              <span>{index + 1}</span>
+              <span><small>{team.group}</small>{team.team}</span>
+              <span>{team.pts}</span>
+              <span>{team.gd > 0 ? '+' : ''}{team.gd}</span>
+              <span>{team.gf ?? 0}</span>
+              <span>{inTopEight ? 'IN' : 'OUT'}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [active, setActive] = useState<NavigationSection>('Overview');
   const [group, setGroup] = useState('A');
@@ -207,7 +238,9 @@ export default function App() {
     window.localStorage.setItem('road-to-26-timezone', timeZone);
   }, [timeZone]);
 
-  const standings: GroupStandings = groupData;
+  const thirdPlacesLocked = groupStageIsComplete(matches);
+  const standings: GroupStandings = thirdPlacesLocked ? applyLockedAdvancementStatuses(groupData) : groupData;
+  const projectedThird = projectThirdPlaceTeams(standings);
   const upcomingMatches = matches;
   const nextMatch = matches[0];
   const nextMatchDisplay = formatMatchDisplay(nextMatch, timeZone);
@@ -241,6 +274,13 @@ export default function App() {
           </div>
           <MatchRail filter={filter} setFilter={setFilter} matchData={upcomingMatches} timeZone={timeZone} />
         </div>
+        <section className="bracket" id="bracket">
+          <div className="third-place-preview">
+            <div><strong>{thirdPlacesLocked ? 'Locked third-place qualifiers' : 'Current third-place projection'}</strong><span>{thirdPlacesLocked ? 'The eight advancing third-place teams are set' : 'Top eight advance if groups ended now'}</span></div>
+            <div className="third-place-list">{projectedThird.map(team => <span key={team.group}><small>{team.group}</small>{team.team}</span>)}</div>
+          </div>
+          <ThirdPlaceTracker standings={standings} locked={thirdPlacesLocked} />
+        </section>
       </main>
     </div>
   );
