@@ -4,17 +4,26 @@ import {
   CalendarDays, ChevronDown, ChevronRight, CircleHelp, Clock3, Globe2, Grid2X2,
   Home, MapPin, Trophy, UsersRound,
 } from 'lucide-react';
-import { groupData, matches } from './data';
+import { bracketStages, groupData, matches } from './data';
 import { formatMatchDisplay, timeZoneOptions } from './shared/time';
-import type { GroupStandings, MatchFixture, NavigationSection, TimeZoneKey } from './shared/types';
+import type {
+  GroupStandings,
+  KnockoutStage,
+  MatchFixture,
+  NavigationSection,
+  TimeZoneKey,
+} from './shared/types';
 import {
   applyLockedAdvancementStatuses,
   groupStageIsComplete,
+  projectedSlot,
   projectThirdPlaceTeams,
   thirdPlaceTable,
+  type ProjectedThirdPlaceTeam,
 } from './shared/worldCup';
 
 const groups = 'ABCDEFGHIJKL'.split('');
+const knockoutStages: KnockoutStage[] = ['Round of 32', 'Round of 16', 'Quarter-finals', 'Semifinals', 'Final'];
 const colors: Record<string, string[]> = {
   US: ['#1647ad', '#fff', '#e22635'], PY: ['#df2535', '#fff', '#1647ad'],
   AU: ['#f4b400', '#158442', '#158442'], EU: ['#a8adb5', '#d7d9dd', '#8d939b'],
@@ -200,6 +209,49 @@ function MatchRail({ filter, setFilter, matchData, timeZone }: MatchRailProps) {
   );
 }
 
+interface KnockoutMatchProps {
+  fixture: MatchFixture;
+  index: number;
+  nextStage: KnockoutStage | 'Champion';
+  standings: GroupStandings;
+  projectedThird: ProjectedThirdPlaceTeam[];
+  bracket?: Partial<Record<KnockoutStage, MatchFixture[]>>;
+  timeZone: TimeZoneKey;
+}
+
+function KnockoutMatch({ fixture, index, nextStage, standings, projectedThird, bracket, timeZone }: KnockoutMatchProps) {
+  const isLive = fixture.status?.short === 'LIVE';
+  const isFinished = fixture.status?.short === 'FT';
+  const showScore = isLive || isFinished;
+  const home = fixture.home || fixture.a;
+  const away = fixture.away || fixture.b;
+  const goals = fixture.goals || { home: 0, away: 0 };
+  const display = formatMatchDisplay(fixture, timeZone);
+  const date = fixture.timestamp ? `${display.month} ${display.day} · ${display.time}` : fixture.date;
+  const homeProjection = projectedSlot(home, standings, projectedThird, bracket);
+  const awayProjection = projectedSlot(away, standings, projectedThird, bracket);
+  return (
+    <article className={`knockout-match ${isLive ? 'is-live' : ''}`}>
+      <header><span>Match {fixture.id || index + 1}</span><time>{date}</time></header>
+      <div className="knockout-team"><FlagBar logo={fixture.homeLogo} code="US" /><span><b>{home}</b>{homeProjection ? <small>{homeProjection}</small> : null}</span>{showScore ? <strong>{goals.home}</strong> : null}</div>
+      <div className="knockout-team"><FlagBar logo={fixture.awayLogo} code="EU" /><span><b>{away}</b>{awayProjection ? <small>{awayProjection}</small> : null}</span>{showScore ? <strong>{goals.away}</strong> : null}</div>
+      <footer>
+        <span>{isLive ? 'Live now' : isFinished ? 'Final' : `Winner → ${nextStage}`}</span>
+        {fixture.venue ? <small>{fixture.venue} · {fixture.city}</small> : null}
+      </footer>
+    </article>
+  );
+}
+
+interface BracketProps {
+  stage: KnockoutStage;
+  setStage: (stage: KnockoutStage) => void;
+  liveBracket?: Partial<Record<KnockoutStage, MatchFixture[]>>;
+  standings: GroupStandings;
+  thirdPlacesLocked: boolean;
+  timeZone: TimeZoneKey;
+}
+
 function ThirdPlaceTracker({ standings, locked }: { standings: GroupStandings; locked: boolean }) {
   const rows = thirdPlaceTable(standings);
   return (
@@ -225,10 +277,48 @@ function ThirdPlaceTracker({ standings, locked }: { standings: GroupStandings; l
   );
 }
 
+function Bracket({ stage, setStage, liveBracket, standings, thirdPlacesLocked, timeZone }: BracketProps) {
+  const fallbackFixtures = bracketStages[stage] || [{ a: 'Winner Semifinal 1', b: 'Winner Semifinal 2', date: 'Jul 19 · 3:00 PM ET' }];
+  const fixtures = liveBracket?.[stage]?.length ? liveBracket[stage] : fallbackFixtures;
+  const currentStageIndex = knockoutStages.indexOf(stage);
+  const nextStage = knockoutStages[currentStageIndex + 1] || 'Champion';
+  const directSlots = Object.values(standings).reduce((total, rows) => total + Math.min(rows.length, 2), 0);
+  const projectedThird = projectThirdPlaceTeams(standings);
+  return (
+    <section className="bracket" id="bracket">
+      <div className="knockout-intro">
+        <div><span className="eyebrow">After the group stage</span><h2>Road to the Round of 32</h2><p>The top two teams in every group advance, joined by the eight best third-place teams.</p></div>
+        <div className="qualification-math" aria-label="Round of 32 qualification breakdown">
+          <div><strong>{directSlots || 24}</strong><span>Top-two<br />qualifiers</span></div><b>+</b>
+          <div><strong>8</strong><span>Best third-place<br />teams</span></div><b>=</b>
+          <div className="total"><strong>32</strong><span>Knockout<br />teams</span></div>
+        </div>
+      </div>
+      <div className="third-place-preview">
+        <div><strong>{thirdPlacesLocked ? 'Locked third-place qualifiers' : 'Current third-place projection'}</strong><span>{thirdPlacesLocked ? 'The eight advancing third-place teams are set' : 'Top eight advance if groups ended now'}</span></div>
+        <div className="third-place-list">{projectedThird.map(team => <span key={team.group}><small>{team.group}</small>{team.team}</span>)}</div>
+      </div>
+      <ThirdPlaceTracker standings={standings} locked={thirdPlacesLocked} />
+      <div className="knockout-flow" aria-label="Knockout tournament stages">
+        <span>Group stage<small>48 teams</small></span><ChevronRight />
+        {knockoutStages.map((name, index) => <button key={name} className={stage === name ? 'active' : ''} onClick={() => setStage(name)}><strong>{name}</strong><small>{index === 0 ? '32 teams' : index === 1 ? '16 teams' : index === 2 ? '8 teams' : index === 3 ? '4 teams' : '2 teams'}</small></button>)}
+      </div>
+      <div className="knockout-round-head">
+        <div><span className="eyebrow">Selected round</span><h3>{stage}</h3></div>
+        <p>{fixtures.length} {fixtures.length === 1 ? 'match' : 'matches'} · Times follow your selected zone</p>
+      </div>
+      <div className="knockout-grid">
+        {fixtures.map((fixture, index) => <KnockoutMatch key={fixture.id || `${stage}-${index}`} fixture={fixture} index={index} nextStage={nextStage} standings={standings} projectedThird={projectedThird} bracket={liveBracket} timeZone={timeZone} />)}
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [active, setActive] = useState<NavigationSection>('Overview');
   const [group, setGroup] = useState('A');
   const [filter, setFilter] = useState('All teams');
+  const [stage, setStage] = useState<KnockoutStage>('Round of 32');
   const [timeZone, setTimeZone] = useState<TimeZoneKey>(() => {
     const stored = window.localStorage.getItem('road-to-26-timezone');
     return timeZoneOptions.some(option => option.value === stored) ? stored as TimeZoneKey : 'ET';
@@ -240,7 +330,6 @@ export default function App() {
 
   const thirdPlacesLocked = groupStageIsComplete(matches);
   const standings: GroupStandings = thirdPlacesLocked ? applyLockedAdvancementStatuses(groupData) : groupData;
-  const projectedThird = projectThirdPlaceTeams(standings);
   const upcomingMatches = matches;
   const nextMatch = matches[0];
   const nextMatchDisplay = formatMatchDisplay(nextMatch, timeZone);
@@ -274,13 +363,7 @@ export default function App() {
           </div>
           <MatchRail filter={filter} setFilter={setFilter} matchData={upcomingMatches} timeZone={timeZone} />
         </div>
-        <section className="bracket" id="bracket">
-          <div className="third-place-preview">
-            <div><strong>{thirdPlacesLocked ? 'Locked third-place qualifiers' : 'Current third-place projection'}</strong><span>{thirdPlacesLocked ? 'The eight advancing third-place teams are set' : 'Top eight advance if groups ended now'}</span></div>
-            <div className="third-place-list">{projectedThird.map(team => <span key={team.group}><small>{team.group}</small>{team.team}</span>)}</div>
-          </div>
-          <ThirdPlaceTracker standings={standings} locked={thirdPlacesLocked} />
-        </section>
+        <Bracket stage={stage} setStage={setStage} standings={standings} thirdPlacesLocked={thirdPlacesLocked} timeZone={timeZone} />
       </main>
     </div>
   );
