@@ -5,7 +5,7 @@ import {
   Home, MapPin, Moon, Sun, Trophy, UsersRound,
 } from 'lucide-react';
 import { bracketStages, groupData, matches } from './data';
-import { formatMatchDisplay, timeZoneOptions } from './shared/time';
+import { countdownLabel, formatMatchDisplay, timeZoneOptions } from './shared/time';
 import type {
   GroupStandings,
   KnockoutStage,
@@ -22,6 +22,7 @@ import {
   thirdPlaceTable,
   type ProjectedThirdPlaceTeam,
 } from './shared/worldCup';
+import { useWorldCupData } from './useWorldCupData';
 
 const groups = 'ABCDEFGHIJKL'.split('');
 const knockoutStages: KnockoutStage[] = ['Round of 32', 'Round of 16', 'Quarter-finals', 'Semifinals', 'Final'];
@@ -316,10 +317,12 @@ function Bracket({ stage, setStage, liveBracket, standings, thirdPlacesLocked, t
 }
 
 export default function App() {
+  const { data: liveData, loading, error } = useWorldCupData();
   const [active, setActive] = useState<NavigationSection>('Overview');
   const [group, setGroup] = useState('A');
   const [filter, setFilter] = useState('All teams');
   const [stage, setStage] = useState<KnockoutStage>('Round of 32');
+  const [now, setNow] = useState(() => Date.now());
   const [timeZone, setTimeZone] = useState<TimeZoneKey>(() => {
     const stored = window.localStorage.getItem('road-to-26-timezone');
     return timeZoneOptions.some(option => option.value === stored) ? stored as TimeZoneKey : 'ET';
@@ -331,6 +334,11 @@ export default function App() {
   });
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem('road-to-26-theme', theme);
   }, [theme]);
@@ -339,11 +347,30 @@ export default function App() {
     window.localStorage.setItem('road-to-26-timezone', timeZone);
   }, [timeZone]);
 
-  const thirdPlacesLocked = groupStageIsComplete(matches);
-  const standings: GroupStandings = thirdPlacesLocked ? applyLockedAdvancementStatuses(groupData) : groupData;
-  const upcomingMatches = matches;
-  const nextMatch = matches[0];
+  const rawStandings: GroupStandings = liveData?.groups && Object.keys(liveData.groups).length ? liveData.groups : groupData;
+  const thirdPlacesLocked = liveData?.matches ? groupStageIsComplete(liveData.matches) : false;
+  const standings: GroupStandings = thirdPlacesLocked ? applyLockedAdvancementStatuses(rawStandings) : rawStandings;
+  const liveGroup = useMemo(() => standings[group] ? group : Object.keys(standings)[0] || 'A', [group, standings]);
+  const upcomingMatches = useMemo(() => {
+    if (!liveData?.matches?.length) return matches;
+    const cutoff = now - 30 * 60 * 1000;
+    const windowEnd = now + 48 * 60 * 60 * 1000;
+    const eligible = liveData.matches.filter(match => {
+      const status = match.status?.short || 'NS';
+      return status === 'LIVE' || (status !== 'FT' && (match.timestamp || 0) > cutoff);
+    });
+    const next48Hours = eligible.filter(match => match.status?.short === 'LIVE' || (match.timestamp || 0) <= windowEnd);
+    return next48Hours.length ? next48Hours : eligible.slice(0, 5);
+  }, [liveData, now]);
+  const nextMatch = upcomingMatches[0] || matches[0];
+  const nextMatchGoals = nextMatch.goals || { home: 0, away: 0 };
   const nextMatchDisplay = formatMatchDisplay(nextMatch, timeZone);
+  const refreshCountdown = countdownLabel(liveData?.schedule?.nextRefreshAt, now);
+  const feedLabel = error
+    ? 'Live feed delayed · showing cached data'
+    : liveData?.fetchedAt
+      ? `Live data · updated ${new Date(liveData.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+      : 'Live data loading';
 
   const jumpTo = (name: NavigationSection) => {
     setActive(name);
@@ -357,7 +384,7 @@ export default function App() {
       <Sidebar active={active} setActive={jumpTo} timeZone={timeZone} />
       <main>
         <header className="topbar">
-          <div><h1>World Cup 2026</h1><p>48 teams. 16 host cities. One trophy.</p></div>
+          <div><h1>World Cup 2026</h1><p>48 teams. 16 host cities. One trophy.</p><small className={`feed-state ${error ? 'feed-error' : ''}`}>{loading ? 'Connecting to live tournament data…' : <><span>{feedLabel}</span><span className="refresh-countdown">{refreshCountdown}</span></>}</small></div>
           <div className="header-controls">
             <button onClick={() => jumpTo('Groups')}><Grid2X2 size={18} />All groups<ChevronDown size={16} /></button>
             <label className="timezone-control"><Clock3 size={18} /><select value={timeZone} onChange={event => setTimeZone(event.target.value as TimeZoneKey)} aria-label="Display match times in"><option value="ET">Eastern (ET)</option><option value="CT">Central (CT)</option><option value="PT">Pacific (PT)</option><option value="VENUE">Venue local</option></select></label>
@@ -367,15 +394,15 @@ export default function App() {
         <div className="dashboard-grid">
           <div className="primary">
             <section className="next-match">
-              <div><small>NEXT MATCH</small><div className="versus"><span><FlagBar code={nextMatch.codes?.[0]} logo={nextMatch.homeLogo} />{nextMatch.home}</span><em>vs</em><span><FlagBar code={nextMatch.codes?.[1]} logo={nextMatch.awayLogo} />{nextMatch.away}</span></div></div>
+              <div><small>{nextMatch.status?.short === 'LIVE' ? 'LIVE NOW' : 'NEXT MATCH'}</small><div className="versus"><span><FlagBar code={nextMatch.codes?.[0]} logo={nextMatch.homeLogo} />{nextMatch.home}</span><em>{nextMatch.status?.short === 'LIVE' ? `${nextMatchGoals.home}–${nextMatchGoals.away}` : 'vs'}</em><span><FlagBar code={nextMatch.codes?.[1]} logo={nextMatch.awayLogo} />{nextMatch.away}</span></div></div>
               <div className="event-meta"><CalendarDays /><strong>{`${nextMatchDisplay.month} ${nextMatchDisplay.day} · ${nextMatchDisplay.time}`}</strong><span><MapPin />{nextMatch.venue}<br /><i>{nextMatch.city}</i></span></div>
             </section>
-            <Standings group={group} setGroup={setGroup} standings={standings} />
-            <GroupFixtures group={group} matchData={matches} timeZone={timeZone} />
+            <Standings group={liveGroup} setGroup={setGroup} standings={standings} />
+            <GroupFixtures group={liveGroup} matchData={liveData?.matches || []} timeZone={timeZone} />
           </div>
           <MatchRail filter={filter} setFilter={setFilter} matchData={upcomingMatches} timeZone={timeZone} />
         </div>
-        <Bracket stage={stage} setStage={setStage} standings={standings} thirdPlacesLocked={thirdPlacesLocked} timeZone={timeZone} />
+        <Bracket stage={stage} setStage={setStage} liveBracket={liveData?.bracket} standings={standings} thirdPlacesLocked={thirdPlacesLocked} timeZone={timeZone} />
       </main>
     </div>
   );
