@@ -1,0 +1,26 @@
+name = "road-to-26"
+main = "worker/index.ts"
+compatibility_date = "2026-06-28"
+workers_dev = true
+preview_urls = true
+
+# Cloudflare Cron Trigger.
+# This wakes the Worker every 2 minutes. The Worker still checks the cached
+# nextRefreshAt timestamp, so provider requests remain match-aware instead of
+# blindly refetching every cron tick.
+[triggers]
+crons = ["*/2 * * * *"]
+
+# Replace these IDs after creating KV namespaces:
+#   npx wrangler kv namespace create WORLD_CUP_CACHE
+#   npx wrangler kv namespace create WORLD_CUP_CACHE --preview
+[[kv_namespaces]]
+binding = "WORLD_CUP_CACHE"
+id = "5954ac8d8ff64647943a0cdd5294ce8e"
+preview_id = "bbd8267523154a7f9d1d22e592d0c098"
+
+[assets]
+directory = "./dist/"
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
