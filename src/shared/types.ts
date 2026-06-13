@@ -52,6 +52,8 @@ export interface MatchFixture {
   homeLogo?: string | null;
   awayLogo?: string | null;
   goals?: Goals;
+  homeScorers?: string[];
+  awayScorers?: string[];
 }
 
 export interface TeamStanding {
@@ -118,6 +120,8 @@ export interface ProviderGame {
   away_team_label?: string;
   home_score?: string | number | null;
   away_score?: string | number | null;
+  home_scorers?: string | null;
+  away_scorers?: string | null;
 }
 
 export interface ProviderGroupTeam {

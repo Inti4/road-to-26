@@ -24,14 +24,14 @@ import type {
 export const API_ROOT = 'https://worldcup26.ir';
 export const SOURCE_NAME = 'WorldCup26.ir open API';
 export const API_TIMEOUT_MS = 35_000;
-export const LIVE_REFRESH_MS = 2 * 60 * 1000;
+export const LIVE_REFRESH_MS = 60 * 1000;
 export const KICKOFF_REFRESH_MS = 60 * 1000;
 export const NEAR_MATCH_REFRESH_MS = 5 * 60 * 1000;
 export const ERROR_RETRY_MS = 5 * 60 * 1000;
 export const DAILY_REFRESH_MS = 24 * 60 * 60 * 1000;
 export const PRE_KICKOFF_WINDOW_MS = 10 * 60 * 1000;
 export const NEAR_MATCH_WINDOW_MS = 60 * 60 * 1000;
-export const REFRESH_POLICY = '2 minutes live; 1 minute pre-kickoff; match-window scheduling otherwise';
+export const REFRESH_POLICY = '1 minute live; 1 minute pre-kickoff; match-window scheduling otherwise';
 
 const LIVE_VALUES = new Set(['live', '1h', 'ht', '2h', 'et', 'penalties']);
 
@@ -49,6 +49,19 @@ export interface NormalizeProviderInput {
 
 function numeric(value: string | number | null | undefined): number {
   return Number(value) || 0;
+}
+
+// Provider sends scorers as a Postgres-array string like {"Pulisic 27'","Reyna 75'"} or null.
+export function parseScorers(raw?: string | number | null): string[] {
+  if (raw === null || raw === undefined) return [];
+  const value = String(raw).trim();
+  if (!value || value.toLowerCase() === 'null') return [];
+  const quoted = value.match(/"([^"]*)"/g);
+  const entries = quoted
+    ? quoted.map(entry => entry.slice(1, -1))
+    : value.replace(/^\{|\}$/g, '').split(',');
+  // Provider sometimes wraps names in straight or curly quotes; strip them but keep the minute apostrophe.
+  return entries.map(entry => entry.replace(/^[\s"“”]+/, '').replace(/[\s"“”]+$/, '')).filter(Boolean);
 }
 
 function mapById<T extends { id: string | number }>(items: T[]): Map<string, T> {
@@ -103,6 +116,8 @@ export function formatFixture(
     homeLogo: homeTeam?.flag || null,
     awayLogo: awayTeam?.flag || null,
     goals: { home: numeric(game.home_score), away: numeric(game.away_score) },
+    homeScorers: parseScorers(game.home_scorers),
+    awayScorers: parseScorers(game.away_scorers),
   };
 }
 

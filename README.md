@@ -15,6 +15,7 @@ I was following the World Cup through Google's results panel and it got tedious 
 - Shows all 12 group tables with points, record, goal difference, and current advancement status.
 - Shows each group's played matchups, scores, and upcoming group fixtures.
 - Shows upcoming matches, venues, cities, and kickoff times.
+- Shows live scores and goal scorers for matches that are in progress or final.
 - Supports time-zone display toggles for Eastern, Central, Pacific, and venue-local time.
 - Shows the knockout path from group stage into the Round of 32 and beyond.
 - Projects the top eight third-place teams based on currently available standings.
@@ -116,7 +117,7 @@ Visitors hit our own `/api/world-cup` endpoint. The Express server keeps an in-m
 
 Refresh policy in `src/shared/worldCup.ts`:
 
-- If a match is live, refresh every 2 minutes.
+- If a match is live, refresh every minute.
 - If kickoff is within 10 minutes, refresh every minute.
 - If kickoff is within 1 hour, refresh every 5 minutes.
 - Otherwise, refresh about 10 minutes before the next match, capped at one daily check.

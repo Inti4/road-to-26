@@ -7,6 +7,7 @@ import {
   computeNextRefresh,
   groupStageIsComplete,
   normalizeProviderData,
+  parseScorers,
   projectThirdPlaceTeams,
   projectedSlot,
   thirdPlaceTable,
@@ -24,7 +25,7 @@ function standing(team: string, pts: number, gd: number, gf: number): TeamStandi
 }
 
 describe('refresh scheduling', () => {
-  it('refreshes every two minutes while a match is live', () => {
+  it('refreshes every minute while a match is live', () => {
     const next = computeNextRefresh([match(now - 5 * 60_000, 'LIVE')], now);
     expect(next.reason).toBe('live match');
     expect(next.at).toBe(now + LIVE_REFRESH_MS);
@@ -70,6 +71,7 @@ describe('provider normalization', () => {
       home_score: 2,
       away_score: 1,
       finished: 'TRUE',
+      home_scorers: `{"Pulisic 27'"}`,
     }];
     const groups: ProviderGroup[] = [{
       name: 'A',
@@ -90,6 +92,7 @@ describe('provider normalization', () => {
       home: 'USA',
       away: 'Canada',
       goals: { home: 2, away: 1 },
+      homeScorers: ["Pulisic 27'"],
       status: { short: 'FT' },
     });
     expect(normalized.groups.A.map(row => row.team)).toEqual(['USA', 'Canada']);
@@ -132,5 +135,15 @@ describe('third-place projection', () => {
     const locked = applyLockedAdvancementStatuses(standings);
     expect(locked.A[2].status).toBe('advancing');
     expect(locked.I[2].status).toBe('out');
+  });
+});
+
+describe('scorer parsing', () => {
+  it('parses provider scorer arrays and handles empty values', () => {
+    expect(parseScorers(`{"Nestory Irankunda 27'","C. Metcalfe 75'"}`)).toEqual(["Nestory Irankunda 27'", "C. Metcalfe 75'"]);
+    expect(parseScorers(`{"“J. Quiñones 9'”","”R. Jiménez 67'”"}`)).toEqual(["J. Quiñones 9'", "R. Jiménez 67'"]);
+    expect(parseScorers('null')).toEqual([]);
+    expect(parseScorers(null)).toEqual([]);
+    expect(parseScorers(undefined)).toEqual([]);
   });
 });

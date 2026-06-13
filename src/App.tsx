@@ -139,6 +139,12 @@ function GroupFixtureRow({ match, timeZone }: GroupFixtureRowProps) {
         {isFinished || isLive ? <strong>{goals.home}–{goals.away}</strong> : <strong>{display.time}</strong>}
         <small>{isLive ? 'LIVE' : isFinished ? 'FINAL' : match.city}</small>
       </div>
+      {(isLive || isFinished) && ((match.homeScorers?.length ?? 0) + (match.awayScorers?.length ?? 0) > 0) ? (
+        <div className="group-fixture-scorers">
+          {match.homeScorers?.length ? <span><b>{match.home}</b>{match.homeScorers.join(' · ')}</span> : null}
+          {match.awayScorers?.length ? <span><b>{match.away}</b>{match.awayScorers.join(' · ')}</span> : null}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -200,10 +206,18 @@ function MatchRail({ filter, setFilter, matchData, timeZone }: MatchRailProps) {
       <div className="match-list">{visible.map(match => {
         const display = formatMatchDisplay(match, timeZone);
         const goals = match.goals || { home: 0, away: 0 };
-        return <article className="match-row" key={`${match.day}-${match.home}`}>
+        const played = match.status?.short === 'LIVE' || match.status?.short === 'FT';
+        const hasScorers = (match.homeScorers?.length ?? 0) + (match.awayScorers?.length ?? 0) > 0;
+        return <article className={`match-row ${match.status?.short === 'LIVE' ? 'is-live' : ''}`} key={`${match.day}-${match.home}`}>
           <time><small>{display.month}</small><strong>{display.day}</strong><small>{display.dow}</small></time>
           <div className="teams"><span><FlagBar code={match.codes?.[0]} logo={match.homeLogo} />{match.home}</span><span><FlagBar code={match.codes?.[1]} logo={match.awayLogo} />{match.away}</span></div>
-          <div className="match-meta"><strong>{match.status?.short === 'LIVE' ? `${goals.home}–${goals.away} · LIVE` : display.time}</strong><span>{match.venue}</span><small>{match.city}</small></div>
+          <div className="match-meta"><strong>{match.status?.short === 'LIVE' ? `${goals.home}–${goals.away} · LIVE` : match.status?.short === 'FT' ? `${goals.home}–${goals.away} · FT` : display.time}</strong><span>{match.venue}</span><small>{match.city}</small></div>
+          {played && hasScorers ? (
+            <div className="match-scorers">
+              {match.homeScorers?.length ? <span><b>{match.home}</b>{match.homeScorers.join(' · ')}</span> : null}
+              {match.awayScorers?.length ? <span><b>{match.away}</b>{match.awayScorers.join(' · ')}</span> : null}
+            </div>
+          ) : null}
         </article>;
       })}</div>
       {visible.length === 0 ? <p className="empty">No matches found.</p> : null}
